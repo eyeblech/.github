@@ -1,4 +1,4 @@
-name: 🔔 GitHub Issues Notifier
+name: 🔔 Rich GitHub Issues Notifier
 on:
   issues:
     types: [opened, closed, reopened, edited, labeled, unlabeled, assigned, unassigned]
@@ -18,27 +18,27 @@ jobs:
             "opened") 
               EMOJI="📂"
               TITLE="NEW ISSUE CREATED"
-              COLOR="65280" # Green
+              COLOR="65280"
               ;;
             "closed")
               EMOJI="✅"
               TITLE="ISSUE CLOSED"
-              COLOR="15158332" # Red
+              COLOR="15158332"
               ;;
             "reopened")
               EMOJI="🔄"
               TITLE="ISSUE REOPENED"
-              COLOR="16776960" # Yellow
+              COLOR="16776960"
               ;;
             "edited")
               EMOJI="✏️"
               TITLE="ISSUE EDITED"
-              COLOR="3447003" # Blue
+              COLOR="3447003"
               ;;
             "labeled")
               EMOJI="🏷️"
               TITLE="LABEL ADDED"
-              COLOR="10181046" # Purple
+              COLOR="10181046"
               ;;
             "unlabeled")
               EMOJI="🏷️❌"
@@ -48,7 +48,7 @@ jobs:
             "assigned")
               EMOJI="👤"
               TITLE="ASSIGNEE ADDED"
-              COLOR="15844367" # Gold
+              COLOR="15844367"
               ;;
             "unassigned")
               EMOJI="👥"
@@ -73,17 +73,21 @@ jobs:
           # Format assignees
           ASSIGNEES="${{ join(github.event.issue.assignees.*.login, ', ') }}"
           if [ -z "$ASSIGNEES" ]; then
-            ASSIGNEES_DISPLAY="👤 *Unassigned*"
+            ASSIGNEES_EMOJI="👤"
+            ASSIGNEES_DISPLAY="*Unassigned*"
           else
-            ASSIGNEES_DISPLAY="👥 $ASSIGNEES"
+            ASSIGNEES_EMOJI="👥"
+            ASSIGNEES_DISPLAY="$ASSIGNEES"
           fi
           
           # Check milestone
           MILESTONE="${{ github.event.issue.milestone.title }}"
           if [ -n "$MILESTONE" ]; then
-            MILESTONE_DISPLAY="🎯 $MILESTONE"
+            MILESTONE_EMOJI="🎯"
+            MILESTONE_DISPLAY="$MILESTONE"
           else
-            MILESTONE_DISPLAY="🎯 *No milestone*"
+            MILESTONE_EMOJI="🎯"
+            MILESTONE_DISPLAY="*No milestone*"
           fi
           
           # Prepare issue body snippet (first 200 chars)
@@ -101,7 +105,9 @@ jobs:
           echo "title=$TITLE" >> $GITHUB_OUTPUT
           echo "color=$COLOR" >> $GITHUB_OUTPUT
           echo "labels_display=$LABELS_DISPLAY" >> $GITHUB_OUTPUT
+          echo "assignees_emoji=$ASSIGNEES_EMOJI" >> $GITHUB_OUTPUT
           echo "assignees_display=$ASSIGNEES_DISPLAY" >> $GITHUB_OUTPUT
+          echo "milestone_emoji=$MILESTONE_EMOJI" >> $GITHUB_OUTPUT
           echo "milestone_display=$MILESTONE_DISPLAY" >> $GITHUB_OUTPUT
           echo "body_snippet=$BODY_SNIPPET" >> $GITHUB_OUTPUT
 
@@ -112,6 +118,10 @@ jobs:
             const issue = context.payload.issue;
             const action = context.payload.action;
             const repo = context.repo;
+            
+            // Get timestamps for Discord relative format
+            const createdTimestamp = Math.floor(new Date(issue.created_at).getTime() / 1000);
+            const updatedTimestamp = Math.floor(new Date(issue.updated_at).getTime() / 1000);
             
             // Create rich embed
             const embed = {
@@ -149,7 +159,7 @@ jobs:
                   inline: true
                 },
                 {
-                  name: "${{ steps.prepare.outputs.assignees_display.split(' ')[0] }} **Assignees**",
+                  name: `${{ steps.prepare.outputs.assignees_emoji }} **Assignees**`,
                   value: `${{ steps.prepare.outputs.assignees_display }}`,
                   inline: true
                 },
@@ -159,7 +169,7 @@ jobs:
                   inline: true
                 },
                 {
-                  name: "${{ steps.prepare.outputs.milestone_display.split(' ')[0] }} **Milestone**",
+                  name: `${{ steps.prepare.outputs.milestone_emoji }} **Milestone**`,
                   value: `${{ steps.prepare.outputs.milestone_display }}`,
                   inline: true
                 },
@@ -170,12 +180,12 @@ jobs:
                 },
                 {
                   name: "📅 **Created**",
-                  value: `<t:${Math.floor(new Date(issue.created_at).getTime() / 1000)}:R>`,
+                  value: `<t:${createdTimestamp}:R>`,
                   inline: true
                 },
                 {
                   name: "🔄 **Updated**",
-                  value: `<t:${Math.floor(new Date(issue.updated_at).getTime() / 1000)}:R>`,
+                  value: `<t:${updatedTimestamp}:R>`,
                   inline: true
                 }
               ],
