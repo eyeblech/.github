@@ -1,208 +1,99 @@
-name: 📋 GitHub Issues Discord Notifier
+name: 🎯 GitHub Issues Notifier
 on:
   issues:
-    types: [opened, closed, reopened, edited, assigned, unassigned, labeled, unlabeled]
+    types: [opened, closed, reopened, labeled, unlabeled, assigned, unassigned]
 
 jobs:
-  send-discord-notification:
+  notify-discord:
     runs-on: ubuntu-latest
     steps:
-      - name: 📊 Gather Issue Data
-        id: issue-data
+      - name: 📊 Prepare Notification Data
+        id: prepare
         run: |
-          # Calculate issue age
-          CREATED_AT="${{ github.event.issue.created_at }}"
-          UPDATED_AT="${{ github.event.issue.updated_at }}"
-          
-          # Format dates (optional - using GitHub's format)
-          echo "created_at=$CREATED_AT" >> $GITHUB_OUTPUT
-          echo "updated_at=$UPDATED_AT" >> $GITHUB_OUTPUT
-          
-          # Get labels as emoji string
-          LABELS_EMOJI=""
-          LABELS="${{ join(github.event.issue.labels.*.name, '|') }}"
-          
-          if [[ "$LABELS" != "" ]]; then
-            IFS='|' read -ra LABEL_ARRAY <<< "$LABELS"
-            for label in "${LABEL_ARRAY[@]}"; do
-              case "${label,,}" in
-                *bug*) LABELS_EMOJI+="🐛 " ;;
-                *enhancement*|*feature*) LABELS_EMOJI+="✨ " ;;
-                *critical*|*urgent*) LABELS_EMOJI+="🚨 " ;;
-                *documentation*) LABELS_EMOJI+="📚 " ;;
-                *question*) LABELS_EMOJI+="❓ " ;;
-                *wip*) LABELS_EMOJI+="🚧 " ;;
-                *help*) LABELS_EMOJI+="🆘 " ;;
-                *security*) LABELS_EMOJI+="🔒 " ;;
-                *performance*) LABELS_EMOJI+="⚡ " ;;
-                *) LABELS_EMOJI+="🏷️ " ;;
-              esac
-            done
-          else
-            LABELS_EMOJI="🏷️ No labels"
-          fi
-          
-          echo "labels_emoji=$LABELS_EMOJI" >> $GITHUB_OUTPUT
-          
-          # Get assignees
-          ASSIGNEES="${{ join(github.event.issue.assignees.*.login, ', ') }}"
-          if [ -z "$ASSIGNEES" ]; then
-            echo "assignees=👤 Unassigned" >> $GITHUB_OUTPUT
-          else
-            echo "assignees=👥 $ASSIGNEES" >> $GITHUB_OUTPUT
-          fi
-          
-          # Set color based on action and labels
-          ACTION="${{ github.event.action }}"
-          if [[ "$ACTION" == "opened" ]]; then
-            echo "color=65280" >> $GITHUB_OUTPUT  # Green
-          elif [[ "$ACTION" == "closed" ]]; then
-            echo "color=15158332" >> $GITHUB_OUTPUT  # Red
-          elif [[ "$ACTION" == "reopened" ]]; then
-            echo "color=16776960" >> $GITHUB_OUTPUT  # Yellow
-          else
-            echo "color=3447003" >> $GITHUB_OUTPUT  # Blue
-          fi
-          
-          # Check if issue has milestone
-          MILESTONE="${{ github.event.issue.milestone.title }}"
-          if [ -n "$MILESTONE" ]; then
-            echo "milestone=🎯 $MILESTONE" >> $GITHUB_OUTPUT
-          else
-            echo "milestone=🎯 No milestone" >> $GITHUB_OUTPUT
-          fi
-
-      - name: 🎨 Create Custom Embed
-        id: create-embed
-        run: |
-          ACTION="${{ github.event.action }}"
-          REPO="${{ github.repository }}"
-          ISSUE_NUMBER="${{ github.event.issue.number }}"
-          TITLE="${{ github.event.issue.title }}"
-          BODY="${{ github.event.issue.body }}"
-          
-          # Truncate long body
-          if [ ${#BODY} -gt 500 ]; then
-            BODY="${BODY:0:497}..."
-          fi
-          
-          # Set action emoji
-          case "$ACTION" in
-            "opened") ACTION_EMOJI="📂" ;;
-            "closed") ACTION_EMOJI="✅" ;;
-            "reopened") ACTION_EMOJI="🔄" ;;
-            "edited") ACTION_EMOJI="📝" ;;
-            "assigned") ACTION_EMOJI="👤" ;;
-            "unassigned") ACTION_EMOJI="👥" ;;
-            "labeled") ACTION_EMOJI="🏷️" ;;
-            "unlabeled") ACTION_EMOJI="🏷️❌" ;;
-            *) ACTION_EMOJI="📋" ;;
+          # Set emoji based on action
+          case "${{ github.event.action }}" in
+            "opened") EMOJI="📂" ;;
+            "closed") EMOJI="✅" ;;
+            "reopened") EMOJI="🔄" ;;
+            "labeled") EMOJI="🏷️" ;;
+            "unlabeled") EMOJI="🏷️❌" ;;
+            "assigned") EMOJI="👤" ;;
+            "unassigned") EMOJI="👥" ;;
+            *) EMOJI="📋" ;;
           esac
           
-          # Create embed JSON
-          EMBED_JSON=$(cat << EOF
-          {
-            "title": "$ACTION_EMOJI Issue #$ISSUE_NUMBER: $TITLE",
-            "url": "${{ github.event.issue.html_url }}",
-            "color": ${{ steps.issue-data.outputs.color }},
-            "fields": [
-              {
-                "name": "📂 Repository",
-                "value": "$REPO",
-                "inline": true
-              },
-              {
-                "name": "📊 Issue State",
-                "value": "${{ github.event.issue.state }}",
-                "inline": true
-              },
-              {
-                "name": "👤 Author",
-                "value": "${{ github.event.issue.user.login }}",
-                "inline": true
-              },
-              {
-                "name": "${{ steps.issue-data.outputs.assignees }}",
-                "value": "Assigned to: ${{ steps.issue-data.outputs.assignees | replace('👥 ', '') | replace('👤 ', '') }}",
-                "inline": false
-              },
-              {
-                "name": "🏷️ Labels",
-                "value": "${{ steps.issue-data.outputs.labels_emoji }}\n${{ join(github.event.issue.labels.*.name, ', ') || 'No labels' }}",
-                "inline": true
-              },
-              {
-                "name": "🎯 Milestone",
-                "value": "${{ steps.issue-data.outputs.milestone }}",
-                "inline": true
-              },
-              {
-                "name": "💬 Comments",
-                "value": "${{ github.event.issue.comments }} comments",
-                "inline": true
-              }
-            ],
-            "footer": {
-              "text": "GitHub Issues • Triggered by $ACTION"
-            },
-            "timestamp": "${{ github.event.issue.updated_at }}",
-            "thumbnail": {
-              "url": "https://github.com/${{ github.event.issue.user.login }}.png"
-            }
-          }
-          EOF
-          )
-          
-          # Escape JSON properly
-          EMBED_JSON_ESCAPED=$(echo "$EMBED_JSON" | jq -R -s -c '.')
-          echo "embed_json=$EMBED_JSON_ESCAPED" >> $GITHUB_OUTPUT
-
-      - name: 📝 Add Issue Body Section (if exists)
-        if: github.event.issue.body != ''
-        id: add-body
-        run: |
-          BODY="${{ github.event.issue.body }}"
-          # Clean and truncate body
-          CLEAN_BODY=$(echo "$BODY" | tr '\n' ' ' | sed 's/"/\\"/g')
-          if [ ${#CLEAN_BODY} -gt 300 ]; then
-            CLEAN_BODY="${CLEAN_BODY:0:297}..."
+          # Set color
+          if [ "${{ github.event.action }}" = "opened" ]; then
+            COLOR="65280"  # Green
+          elif [ "${{ github.event.action }}" = "closed" ]; then
+            COLOR="15158332"  # Red
+          else
+            COLOR="3447003"  # Blue
           fi
           
-          echo "body_field={\"name\": \"📝 Description\", \"value\": \"$CLEAN_BODY\", \"inline\": false}" >> $GITHUB_OUTPUT
+          echo "emoji=$EMOJI" >> $GITHUB_OUTPUT
+          echo "color=$COLOR" >> $GITHUB_OUTPUT
+          
+          # Format labels
+          LABELS="${{ join(github.event.issue.labels.*.name, ', ') }}"
+          if [ -z "$LABELS" ]; then
+            echo "labels_formatted=No labels" >> $GITHUB_OUTPUT
+          else
+            echo "labels_formatted=$LABELS" >> $GITHUB_OUTPUT
+          fi
+          
+          # Format assignees
+          ASSIGNEES="${{ join(github.event.issue.assignees.*.login, ', ') }}"
+          if [ -z "$ASSIGNEES" ]; then
+            echo "assignees_formatted=Unassigned" >> $GITHUB_OUTPUT
+          else
+            echo "assignees_formatted=$ASSIGNEES" >> $GITHUB_OUTPUT
+          fi
 
-      - name: 🚀 Send to Discord
-        uses: tsickert/discord-webhook@v5
-        with:
-          webhook-url: ${{ secrets.DISCORD_WEBHOOK }}
-          username: "GitHub Issue Tracker"
-          avatar-url: "https://cdn-icons-png.flaticon.com/512/25/25231.png"
-          embed: |
-            ${{ steps.create-embed.outputs.embed_json }}
-          embed-fields: |
-            ${{ steps.add-body.outputs.body_field }}
-          content: |
-            **${{ github.event.repository.full_name }}** - Issue #${{ github.event.issue.number }}
-            🔗 **[View on GitHub](${{ github.event.issue.html_url }})**
-            
-            📢 **Action:** ${{ github.event.action | upper }}
-            👤 **By:** @${{ github.event.issue.user.login }}
-            📅 **Updated:** ${{ github.event.issue.updated_at }}
-
-      - name: 📱 Send Mobile-Friendly Summary
-        if: always()
+      - name: 📨 Send to Discord
         uses: appleboy/discord-action@0.0.3
         with:
           webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
           webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN }}
-          username: "GitHub Mobile Alert"
-          message: |
-            📱 **GitHub Issue Update**
-            
-            📂 **Repo:** ${{ github.repository }}
-            🎫 **Issue:** #${{ github.event.issue.number }}
-            📝 **Title:** ${{ github.event.issue.title }}
-            
-            ⚡ **Action:** ${{ github.event.action }}
-            👤 **By:** ${{ github.event.issue.user.login }}
-            
-            🔗 ${{ github.event.issue.html_url }}
+          username: "GitHub Issues"
+          avatar_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+          embeds: |
+            [
+              {
+                "title": "${{ steps.prepare.outputs.emoji }} Issue #${{ github.event.issue.number }}: ${{ github.event.issue.title }}",
+                "description": "**Repository:** `${{ github.repository }}`\n**Action:** `${{ github.event.action }}`",
+                "url": "${{ github.event.issue.html_url }}",
+                "color": ${{ steps.prepare.outputs.color }},
+                "fields": [
+                  {
+                    "name": "👤 Author",
+                    "value": "${{ github.event.issue.user.login }}",
+                    "inline": true
+                  },
+                  {
+                    "name": "📊 State",
+                    "value": "${{ github.event.issue.state }}",
+                    "inline": true
+                  },
+                  {
+                    "name": "🏷️ Labels",
+                    "value": "${{ steps.prepare.outputs.labels_formatted }}",
+                    "inline": true
+                  },
+                  {
+                    "name": "👥 Assignees",
+                    "value": "${{ steps.prepare.outputs.assignees_formatted }}",
+                    "inline": true
+                  },
+                  {
+                    "name": "💬 Comments",
+                    "value": "${{ github.event.issue.comments }}",
+                    "inline": true
+                  }
+                ],
+                "footer": {
+                  "text": "GitHub Issues • ${{ github.event.action }}"
+                },
+                "timestamp": "${{ github.event.issue.updated_at }}"
+              }
+            ]
