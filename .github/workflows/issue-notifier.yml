@@ -1,42 +1,111 @@
-name: GitHub Issues Discord Notifier
+name: 🔔 GitHub Issues Notifier
 on:
   issues:
-    types: [opened, closed, reopened, labeled, unlabeled]
+    types: [opened, closed, reopened, edited, labeled, unlabeled, assigned, unassigned]
 
 jobs:
-  notify:
+  rich-discord-notification:
     runs-on: ubuntu-latest
     steps:
-      - name: Prepare message
+      - name: 🎨 Prepare Rich Data
         id: prepare
         run: |
-          # Set colors
-          if [ "${{ github.event.action }}" = "opened" ]; then
-            echo "color=65280" >> $GITHUB_OUTPUT
-            echo "status=NEW ISSUE 📂" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event.action }}" = "closed" ]; then
-            echo "color=15158332" >> $GITHUB_OUTPUT
-            echo "status=ISSUE CLOSED ✅" >> $GITHUB_OUTPUT
+          # Get action details
+          ACTION="${{ github.event.action }}"
+          
+          # Set action emoji and title
+          case "$ACTION" in
+            "opened") 
+              EMOJI="📂"
+              TITLE="NEW ISSUE CREATED"
+              COLOR="65280" # Green
+              ;;
+            "closed")
+              EMOJI="✅"
+              TITLE="ISSUE CLOSED"
+              COLOR="15158332" # Red
+              ;;
+            "reopened")
+              EMOJI="🔄"
+              TITLE="ISSUE REOPENED"
+              COLOR="16776960" # Yellow
+              ;;
+            "edited")
+              EMOJI="✏️"
+              TITLE="ISSUE EDITED"
+              COLOR="3447003" # Blue
+              ;;
+            "labeled")
+              EMOJI="🏷️"
+              TITLE="LABEL ADDED"
+              COLOR="10181046" # Purple
+              ;;
+            "unlabeled")
+              EMOJI="🏷️❌"
+              TITLE="LABEL REMOVED"
+              COLOR="10181046"
+              ;;
+            "assigned")
+              EMOJI="👤"
+              TITLE="ASSIGNEE ADDED"
+              COLOR="15844367" # Gold
+              ;;
+            "unassigned")
+              EMOJI="👥"
+              TITLE="ASSIGNEE REMOVED"
+              COLOR="15844367"
+              ;;
+            *)
+              EMOJI="📋"
+              TITLE="ISSUE UPDATED"
+              COLOR="3447003"
+              ;;
+          esac
+          
+          # Format labels with emojis
+          LABELS="${{ join(github.event.issue.labels.*.name, ', ') }}"
+          if [ -z "$LABELS" ]; then
+            LABELS_DISPLAY="🏷️ *No labels*"
           else
-            echo "color=3447003" >> $GITHUB_OUTPUT
-            echo "status=ISSUE UPDATED 🔄" >> $GITHUB_OUTPUT
+            LABELS_DISPLAY="$LABELS"
           fi
           
-          # Get labels
-          if [ -z "${{ join(github.event.issue.labels.*.name, ', ') }}" ]; then
-            echo "labels=None" >> $GITHUB_OUTPUT
+          # Format assignees
+          ASSIGNEES="${{ join(github.event.issue.assignees.*.login, ', ') }}"
+          if [ -z "$ASSIGNEES" ]; then
+            ASSIGNEES_DISPLAY="👤 *Unassigned*"
           else
-            echo "labels=${{ join(github.event.issue.labels.*.name, ', ') }}" >> $GITHUB_OUTPUT
+            ASSIGNEES_DISPLAY="👥 $ASSIGNEES"
           fi
           
-          # Get assignees
-          if [ -z "${{ join(github.event.issue.assignees.*.login, ', ') }}" ]; then
-            echo "assignees=None" >> $GITHUB_OUTPUT
+          # Check milestone
+          MILESTONE="${{ github.event.issue.milestone.title }}"
+          if [ -n "$MILESTONE" ]; then
+            MILESTONE_DISPLAY="🎯 $MILESTONE"
           else
-            echo "assignees=${{ join(github.event.issue.assignees.*.login, ', ') }}" >> $GITHUB_OUTPUT
+            MILESTONE_DISPLAY="🎯 *No milestone*"
           fi
+          
+          # Prepare issue body snippet (first 200 chars)
+          BODY="${{ github.event.issue.body }}"
+          if [ -n "$BODY" ] && [ "${#BODY}" -gt 200 ]; then
+            BODY_SNIPPET="${BODY:0:197}..."
+          elif [ -n "$BODY" ]; then
+            BODY_SNIPPET="$BODY"
+          else
+            BODY_SNIPPET="*No description provided*"
+          fi
+          
+          # Output all variables
+          echo "emoji=$EMOJI" >> $GITHUB_OUTPUT
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
+          echo "color=$COLOR" >> $GITHUB_OUTPUT
+          echo "labels_display=$LABELS_DISPLAY" >> $GITHUB_OUTPUT
+          echo "assignees_display=$ASSIGNEES_DISPLAY" >> $GITHUB_OUTPUT
+          echo "milestone_display=$MILESTONE_DISPLAY" >> $GITHUB_OUTPUT
+          echo "body_snippet=$BODY_SNIPPET" >> $GITHUB_OUTPUT
 
-      - name: Send Discord notification
+      - name: 🚀 Send Rich Discord Embed
         uses: actions/github-script@v6
         with:
           script: |
@@ -44,58 +113,103 @@ jobs:
             const action = context.payload.action;
             const repo = context.repo;
             
+            // Create rich embed
             const embed = {
-              title: `#${issue.number}: ${issue.title}`,
+              title: `${{ steps.prepare.outputs.emoji }} ${{ steps.prepare.outputs.title }}`,
+              description: `**[${repo.owner}/${repo.repo}]** • Issue #${issue.number}`,
               url: issue.html_url,
-              color: ${{ steps.prepare.outputs.color }},
+              color: parseInt(`${{ steps.prepare.outputs.color }}`),
+              thumbnail: {
+                url: issue.user.avatar_url
+              },
               fields: [
                 {
-                  name: 'Repository',
-                  value: `${repo.owner}/${repo.repo}`,
+                  name: "📝 **Title**",
+                  value: issue.title,
+                  inline: false
+                },
+                {
+                  name: "📄 **Description**",
+                  value: `${{ steps.prepare.outputs.body_snippet }}`,
+                  inline: false
+                },
+                {
+                  name: "👤 **Author**",
+                  value: `[${issue.user.login}](${issue.user.html_url})`,
                   inline: true
                 },
                 {
-                  name: 'Action',
-                  value: action,
+                  name: "📊 **State**",
+                  value: issue.state.toUpperCase(),
                   inline: true
                 },
                 {
-                  name: 'Author',
-                  value: issue.user.login,
+                  name: "🔧 **Action**",
+                  value: action.toUpperCase(),
                   inline: true
                 },
                 {
-                  name: 'State',
-                  value: issue.state,
+                  name: "${{ steps.prepare.outputs.assignees_display.split(' ')[0] }} **Assignees**",
+                  value: `${{ steps.prepare.outputs.assignees_display }}`,
                   inline: true
                 },
                 {
-                  name: 'Labels',
-                  value: '${{ steps.prepare.outputs.labels }}',
+                  name: "🏷️ **Labels**",
+                  value: `${{ steps.prepare.outputs.labels_display }}`,
                   inline: true
                 },
                 {
-                  name: 'Assignees',
-                  value: '${{ steps.prepare.outputs.assignees }}',
+                  name: "${{ steps.prepare.outputs.milestone_display.split(' ')[0] }} **Milestone**",
+                  value: `${{ steps.prepare.outputs.milestone_display }}`,
+                  inline: true
+                },
+                {
+                  name: "💬 **Comments**",
+                  value: `${issue.comments} comments`,
+                  inline: true
+                },
+                {
+                  name: "📅 **Created**",
+                  value: `<t:${Math.floor(new Date(issue.created_at).getTime() / 1000)}:R>`,
+                  inline: true
+                },
+                {
+                  name: "🔄 **Updated**",
+                  value: `<t:${Math.floor(new Date(issue.updated_at).getTime() / 1000)}:R>`,
                   inline: true
                 }
               ],
               footer: {
-                text: 'GitHub Issues Bot'
+                text: `GitHub Issue #${issue.number} • ${action} by ${issue.user.login}`,
+                icon_url: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
               },
               timestamp: new Date().toISOString()
             };
             
+            // Create Discord message
             const message = {
-              content: `${{ steps.prepare.outputs.status }}`,
-              embeds: [embed]
+              content: `**${{ steps.prepare.outputs.emoji }} Issue #${issue.number} ${action}** in **${repo.owner}/${repo.repo}**\n🔗 [View on GitHub](${issue.html_url})`,
+              embeds: [embed],
+              username: "GitHub Issue Tracker",
+              avatar_url: "https://cdn-icons-png.flaticon.com/512/25/25231.png"
             };
             
-            await fetch(process.env.DISCORD_WEBHOOK, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(message)
-            });
+            // Send to Discord
+            try {
+              const response = await fetch(process.env.DISCORD_WEBHOOK, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(message)
+              });
+              
+              if (!response.ok) {
+                console.log(`Discord response: ${response.status} ${response.statusText}`);
+              }
+            } catch (error) {
+              console.log(`Error sending to Discord: ${error.message}`);
+            }
           github-token: ${{ secrets.GITHUB_TOKEN }}
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
