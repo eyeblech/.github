@@ -1,60 +1,18 @@
-name: Issue Notifier
-on:
-  issues:
-    types: [opened, closed, reopened]
-
+name: GitHub Actions Demo
+run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
+on: [push]
 jobs:
-  notify-discord:
+  Explore-GitHub-Actions:
     runs-on: ubuntu-latest
     steps:
-      - name: Send to Discord
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const issue = context.payload.issue;
-            const repo = context.repo;
-            const action = context.payload.action;
-            
-            // Create Discord message
-            const message = {
-              content: `📋 Issue ${action} in ${repo.owner}/${repo.repo}`,
-              embeds: [{
-                title: `#${issue.number}: ${issue.title}`,
-                description: issue.body || 'No description',
-                url: issue.html_url,
-                color: issue.state === 'open' ? 0x00ff00 : 0xff0000,
-                fields: [
-                  {
-                    name: 'Author',
-                    value: issue.user.login,
-                    inline: true
-                  },
-                  {
-                    name: 'State',
-                    value: issue.state,
-                    inline: true
-                  },
-                  {
-                    name: 'Labels',
-                    value: issue.labels.map(l => l.name).join(', ') || 'None',
-                    inline: true
-                  }
-                ],
-                footer: {
-                  text: `GitHub Issue • ${action}`
-                },
-                timestamp: new Date().toISOString()
-              }]
-            };
-            
-            // Send to Discord
-            await fetch(process.env.DISCORD_WEBHOOK, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify(message)
-            });
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-        env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      - run: echo "🎉 The job was automatically triggered by a ${{ github.event_name }} event."
+      - run: echo "🐧 This job is now running on a ${{ runner.os }} server hosted by GitHub!"
+      - run: echo "🔎 The name of your branch is ${{ github.ref }} and your repository is ${{ github.repository }}."
+      - name: Check out repository code
+        uses: actions/checkout@v5
+      - run: echo "💡 The ${{ github.repository }} repository has been cloned to the runner."
+      - run: echo "🖥️ The workflow is now ready to test your code on the runner."
+      - name: List files in the repository
+        run: |
+          ls ${{ github.workspace }}
+      - run: echo "🍏 This job's status is ${{ job.status }}."
